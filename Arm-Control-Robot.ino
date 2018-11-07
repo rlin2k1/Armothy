@@ -14,6 +14,29 @@ extern "C" {
  
 #define TCAADDR 0x70
 
+struct packet {
+  float ax1;
+  float ay1;
+  float az1;
+  float gx1;
+  float gy1;
+  float gz1;
+  float mx1;
+  float my1;
+  float mz1;
+  float ax2;
+  float ay2;
+  float az2;
+  float gx2;
+  float gy2;
+  float gz2;
+  float mx2;
+  float my2;
+  float mz2;
+  float flexAngle;
+};
+
+
 LSM9DS1 imu1;
 LSM9DS1 imu2;
 const int FLEX_PIN = 0;
@@ -38,7 +61,7 @@ void setup()
  
     Wire.begin();
     
-    Serial.begin(115200);
+    Serial.begin(38400);
     pinMode(FLEX_PIN, INPUT);
     Serial.println("\nTCAScanner ready!");
     
@@ -70,7 +93,7 @@ void setup()
   tcaselect(4);
   if(!imu2.begin())
     Serial.println("Failed to communicate with IMU4!");
-    
+
 }
  
 void loop() 
@@ -85,27 +108,47 @@ void loop()
   Serial.println("Bend: " + String(angle) + " degrees");
   Serial.println();
 
-
+  packet variable;
+  variable.flexAngle = angle;
   
   tcaselect(2);
   imu1.readAccel();
   imu1.readGyro();
- 
+  imu1.readMag();
   /* Display the results */
   Serial.print("Sensor #1 - ");
   Serial.print("X: "); Serial.print(imu1.calcAccel(imu1.ax)); Serial.print(" "); Serial.println(imu1.calcGyro(imu1.gx));
   Serial.print("Y: "); Serial.print(imu1.calcAccel(imu1.ay)); Serial.print("  "); Serial.println(imu1.calcGyro(imu1.gy));
   Serial.print("Z: "); Serial.print(imu1.calcAccel(imu1.az)); Serial.print("  "); Serial.println(imu1.calcGyro(imu1.gz));
-
+  variable.ax1 = imu1.calcAccel(imu1.ax);
+  variable.ay1 = imu1.calcAccel(imu1.ay);
+  variable.az1 = imu1.calcAccel(imu1.az);
+  variable.gx1 = imu1.calcAccel(imu1.gx);
+  variable.gy1 = imu1.calcAccel(imu1.gy);
+  variable.gz1 = imu1.calcAccel(imu1.gz);
+  variable.mx1 = imu1.calcAccel(imu1.mx);
+  variable.my1 = imu1.calcAccel(imu1.my);
+  variable.mz1 = imu1.calcAccel(imu1.mz);
   
   tcaselect(4);
   imu2.readAccel();
   imu2.readGyro();
- 
+  imu2.readMag();
   /* Display the results */
   Serial.print("Sensor #2 - ");
   Serial.print("X: "); Serial.print(imu2.calcAccel(imu2.ax)); Serial.print(" "); Serial.println(imu2.calcGyro(imu2.gx));
   Serial.print("Y: "); Serial.print(imu2.calcAccel(imu2.ay)); Serial.print("  "); Serial.println(imu2.calcGyro(imu2.gy));
   Serial.print("Z: "); Serial.print(imu2.calcAccel(imu2.az)); Serial.print("  "); Serial.println(imu2.calcGyro(imu2.gz));
-  delay(500);
+  variable.ax2 = imu2.calcAccel(imu2.ax);
+  variable.ay2 = imu2.calcAccel(imu2.ay);
+  variable.az2 = imu2.calcAccel(imu2.az);
+  variable.gx2 = imu2.calcAccel(imu2.gx);
+  variable.gy2 = imu2.calcAccel(imu2.gy);
+  variable.gz2 = imu2.calcAccel(imu2.gz);
+  variable.mx2 = imu2.calcAccel(imu2.mx);
+  variable.my2 = imu2.calcAccel(imu2.my);
+  variable.mz2 = imu2.calcAccel(imu2.mz);
+  
+  Serial.write((byte*)&variable, sizeof(variable)); // Sends the packet variable to the master
+  delay(10);
 }
