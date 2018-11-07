@@ -90,7 +90,6 @@ Distributed as-is; no warranty is given.
 #include <SPI.h> // Included for SFE_LSM9DS0 library
 #include <Wire.h>
 #include <Servo.h>
-#include "SFE_LSM9DS0.h"
 //#include "Arduino.h"
 //#include <Adafruit_GFX.h>
 //#include <Adafruit_PCD8544.h>
@@ -112,33 +111,9 @@ Servo gripper;
 // pin 6 - LCD reset (RST)
 //Adafruit_PCD8544 display = Adafruit_PCD8544(9, 8, 7, 5, 6);
 
-///////////////////////
-// Example I2C Setup //
-///////////////////////
-// Comment out this section if you're using SPI
-// SDO_XM and SDO_G are both grounded, so our addresses are:
-#define LSM9DS0_XM  0x1D // Would be 0x1E if SDO_XM is LOW
-#define LSM9DS0_G   0x6B // Would be 0x6A if SDO_G is LOW
-// Create an instance of the LSM9DS0 library called `dof` the
-// parameters for this constructor are:
-// [SPI or I2C Mode declaration],[gyro I2C address],[xm I2C add.]
-LSM9DS0 dof(MODE_I2C, LSM9DS0_G, LSM9DS0_XM);
-
-///////////////////////
-// Example SPI Setup //
-///////////////////////
-/* // Uncomment this section if you're using SPI
-#define LSM9DS0_CSG  9  // CSG connected to Arduino pin 9
-#define LSM9DS0_CSXM 10 // CSXM connected to Arduino pin 10
-LSM9DS0 dof(MODE_SPI, LSM9DS0_CSG, LSM9DS0_CSXM);
-*/
-
 ///////////////////////////////
 // Interrupt and Servo Pin Definitions //
 ///////////////////////////////
-const byte INT1XM = 3; // INT1XM tells us when accel data is ready
-const byte INT2XM = 2; // INT2XM tells us when mag data is ready
-const byte DRDYG  = 4; // DRDYG  tells us when gyro data is ready
 const int BASE = 5;
 const int SHOULDER = 6; 
 const int ELBOW = 7;
@@ -179,27 +154,52 @@ int g_angle = 90;
 
 uint32_t count = 0;  // used to control display output rate
 uint32_t delt_t = 0; // used to control display output rate
-float pitch, yaw, roll, heading;
+float heading;
 float deltat = 0.0f;        // integration interval for both filter schemes
 uint32_t lastUpdate = 0;    // used to calculate integration interval
 uint32_t Now = 0;           // used to calculate integration interval
 
 float abias[3] = {0, 0, 0}, gbias[3] = {0, 0, 0};
-float ax, ay, az, gx, gy, gz, mx, my, mz; // variables to hold latest sensor data values 
-float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};    // vector to hold quaternion
+float ax1, ay1, az1, gx1, gy1, gz1, mx1, my1, mz1; // variables to hold latest sensor data values 
+float ax2, ay2, az2, gx2, gy2, gz2, mx2, my2, mz2; // variables to hold latest sensor data values 
 float eInt[3] = {0.0f, 0.0f, 0.0f};       // vector to hold integral error for Mahony method
 float temperature;
+
+struct imu_data {
+  double yaw;
+  double pitch;
+  double roll;
+  float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};    // vector to hold quaternion
+  int first;
+  int second;
+};
+
+struct packet {
+  float ax1;
+  float ay1;
+  float az1;
+  float gx1;
+  float gy1;
+  float gz1;
+  float mx1;
+  float my1;
+  float mz1;
+  float ax2;
+  float ay2;
+  float az2;
+  float gx2;
+  float gy2;
+  float gz2;
+  float mx2;
+  float my2;
+  float mz2;
+  float flexAngle;
+};
 
 void setup()
 {
   Serial.begin(38400); // Start serial at 38400 bps
-  Serial.println("H"); 
   
-  // Set up interrupt pins as inputs:
-  pinMode(INT1XM, INPUT);
-  pinMode(INT2XM, INPUT);
-  pinMode(DRDYG,  INPUT);
-    
   //Setup for servos and initialization
   base.attach(BASE);
   base.write(def_angle);
@@ -213,81 +213,47 @@ void setup()
   wrist.write(W_CAM);
   gripper.attach(GRIPPER);
   gripper.write(90);
-  // begin() returns a 16-bit value which includes both the gyro 
-  // and accelerometers WHO_AM_I response. You can check this to
-  // make sure communication was successful.
-  uint32_t status = dof.begin();
- 
-  Serial.print("LSM9DS0 WHO_AM_I's returned: 0x");
-  Serial.println(status, HEX);
-  Serial.println("Should be 0x49D4");
-  Serial.println();
 
-  delay(2000); 
-  
- // Set data output ranges; choose lowest ranges for maximum resolution
- // Accelerometer scale can be: A_SCALE_2G, A_SCALE_4G, A_SCALE_6G, A_SCALE_8G, or A_SCALE_16G   
-    dof.setAccelScale(dof.A_SCALE_2G);
- // Gyro scale can be:  G_SCALE__245, G_SCALE__500, or G_SCALE__2000DPS
-    dof.setGyroScale(dof.G_SCALE_245DPS);
- // Magnetometer scale can be: M_SCALE_2GS, M_SCALE_4GS, M_SCALE_8GS, M_SCALE_12GS   
-    dof.setMagScale(dof.M_SCALE_2GS);
-  
- // Set output data rates  
- // Accelerometer output data rate (ODR) can be: A_ODR_3125 (3.225 Hz), A_ODR_625 (6.25 Hz), A_ODR_125 (12.5 Hz), A_ODR_25, A_ODR_50, 
- //                                              A_ODR_100,  A_ODR_200, A_ODR_400, A_ODR_800, A_ODR_1600 (1600 Hz)
-    dof.setAccelODR(dof.A_ODR_200); // Set accelerometer update rate at 100 Hz
- // Accelerometer anti-aliasing filter rate can be 50, 194, 362, or 763 Hz
- // Anti-aliasing acts like a low-pass filter allowing oversampling of accelerometer and rejection of high-frequency spurious noise.
- // Strategy here is to effectively oversample accelerometer at 100 Hz and use a 50 Hz anti-aliasing (low-pass) filter frequency
- // to get a smooth ~150 Hz filter update rate
-    dof.setAccelABW(dof.A_ABW_50); // Choose lowest filter setting for low noise
- 
- // Gyro output data rates can be: 95 Hz (bandwidth 12.5 or 25 Hz), 190 Hz (bandwidth 12.5, 25, 50, or 70 Hz)
- //                                 380 Hz (bandwidth 20, 25, 50, 100 Hz), or 760 Hz (bandwidth 30, 35, 50, 100 Hz)
-    dof.setGyroODR(dof.G_ODR_190_BW_125);  // Set gyro update rate to 190 Hz with the smallest bandwidth for low noise
-
- // Magnetometer output data rate can be: 3.125 (ODR_3125), 6.25 (ODR_625), 12.5 (ODR_125), 25, 50, or 100 Hz
-    dof.setMagODR(dof.M_ODR_125); // Set magnetometer to update every 80 ms
-    
- // Use the FIFO mode to average accelerometer and gyro readings to calculate the biases, which can then be removed from
- // all subsequent measurements.
-    dof.calLSM9DS0(gbias, abias);
 }
 
 void loop()
 {
-  if(digitalRead(DRDYG)) {  // When new gyro data is ready
-  dof.readGyro();           // Read raw gyro data
-    gx = dof.calcGyro(dof.gx) - gbias[0];   // Convert to degrees per seconds, remove gyro biases
-    gy = dof.calcGyro(dof.gy) - gbias[1];
-    gz = dof.calcGyro(dof.gz) - gbias[2];
+  packet* pack;
+  if(Serial.available() > 0){ // Checks whether data is comming from the serial port
+    Serial.readBytes((char*)pack, sizeof(packet)); // Reads the data from the serial port
   }
-  
-  if(digitalRead(INT1XM)) {  // When new accelerometer data is ready
-    dof.readAccel();         // Read raw accelerometer data
-    ax = dof.calcAccel(dof.ax) - abias[0];   // Convert to g's, remove accelerometer biases
-    ay = dof.calcAccel(dof.ay) - abias[1];
-    az = dof.calcAccel(dof.az) - abias[2];
-  }
-  
-  if(digitalRead(INT2XM)) {  // When new magnetometer data is ready
-    dof.readMag();           // Read raw magnetometer data
-    mx = dof.calcMag(dof.mx);     // Convert to Gauss and correct for calibration
-    my = dof.calcMag(dof.my);
-    mz = dof.calcMag(dof.mz);
-    
-    dof.readTemp();
-    temperature = 21.0 + (float) dof.temperature/8.; // slope is 8 LSB per degree C, just guessing at the intercept
-  }
+  ax1 = pack->ax1;
+  ay1 = pack->ay1;
+  az1 = pack->az1;
+  gx1 = pack->gx1;
+  gy1 = pack->gy1;
+  gz1 = pack->gz1;
+  mx1 = pack->mx1;
+  my1 = pack->my1;
+  mz1 = pack->mz1;
 
+  ax2 = pack->ax2;
+  ay2 = pack->ay2;
+  az2 = pack->az2;
+  gx2 = pack->gx2;
+  gy2 = pack->gy2;
+  gz2 = pack->gz2;
+  mx2 = pack->mx2;
+  my2 = pack->my2;
+  mz2 = pack->mz2;
+
+  imu_data imu1;
+  imu_data imu2;
+  
   Now = micros();
   deltat = ((Now - lastUpdate)/1000000.0f); // set integration time by time elapsed since last filter update
   lastUpdate = Now;
   // Sensors x- and y-axes are aligned but magnetometer z-axis (+ down) is opposite to z-axis (+ up) of accelerometer and gyro!
   // This is ok by aircraft orientation standards!  
   // Pass gyro rate as rad/s
-   MadgwickQuaternionUpdate(ax, ay, az, gx*PI/180.0f, gy*PI/180.0f, gz*PI/180.0f, mx, my, mz);
+   MadgwickQuaternionUpdate(ax1, ay1, az1, gx1*PI/180.0f, gy1*PI/180.0f, gz1*PI/180.0f, mx1, my1, mz1, imu1);
+   
+   MadgwickQuaternionUpdate(ax2, ay2, az2, gx2*PI/180.0f, gy2*PI/180.0f, gz2*PI/180.0f, mx2, my2, mz2, imu2);
  //MahonyQuaternionUpdate(ax, ay, az, gx*PI/180.0f, gy*PI/180.0f, gz*PI/180.0f, mx, my, mz);
 
     // Serial print and/or display at 0.5 s rate independent of data rates
@@ -305,24 +271,8 @@ void loop()
   // Tait-Bryan angles as well as Euler angles are non-commutative; that is, to get the correct orientation the rotations must be
   // applied in the correct order which for this configuration is yaw, pitch, and then roll.
   // For more see http://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles which has additional links.
-    yaw   = atan2(2.0f * (q[1] * q[2] + q[0] * q[3]), q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3]);   
-    pitch = -asin(2.0f * (q[1] * q[3] - q[0] * q[2]));
-    roll  = atan2(2.0f * (q[0] * q[1] + q[2] * q[3]), q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3]);
-    pitch *= 180.0f / PI;
-    yaw   *= 180.0f / PI; 
-    yaw   -= 11; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
-    roll  *= 180.0f / PI;
-
-    pitch+= 82;
-    roll+=90;
-
-    //execute movement of arm
-    if((roll <= 180) && (pitch <= 180))
-    {
-      wrist.write( pitch);
-      cuff.write(180 - roll);
-    Serial.print(roll); Serial.print("\t"); Serial.println(pitch); 
-    }
+  update_movement(imu1);
+  update_movement(imu2);
 
    // Serial.print(roll); Serial.print("\t"); Serial.print(pitch); Serial.print("\t"); Serial.println(yaw);
 
@@ -348,54 +298,61 @@ void loop()
 
     count = millis();
     }
+    delete pack;
     
 }
 
+void update_movement(imu_data& imu) {
+    imu.yaw   = atan2(2.0f * (imu.q[1] * imu.q[2] + imu.q[0] * imu.q[3]), imu.q[0] * imu.q[0] + imu.q[1] * imu.q[1] - imu.q[2] * imu.q[2] - imu.q[3] * imu.q[3]);   
+    imu.pitch = -asin(2.0f * (imu.q[1] * imu.q[3] - imu.q[0] * imu.q[2]));
+    imu.roll  = atan2(2.0f * (imu.q[0] * imu.q[1] + imu.q[2] * imu.q[3]), imu.q[0] * imu.q[0] - imu.q[1] * imu.q[1] - imu.q[2] * imu.q[2] + imu.q[3] * imu.q[3]);
+    imu.pitch *= 180.0f / PI;
+    imu.yaw   *= 180.0f / PI; 
+    imu.yaw   -= 11; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
+    imu.roll  *= 180.0f / PI;
 
-// Here's a fun function to calculate your heading, using Earth's
-// magnetic field.
-// It only works if the sensor is flat (z-axis normal to Earth).
-// Additionally, you may need to add or subtract a declination
-// angle to get the heading normalized to your location.
-// See: http://www.ngdc.noaa.gov/geomag/declination.shtml
-void printHeading(float hx, float hy)
-{
-  if (hy > 0)
-  {
-    heading = 90 - (atan(hx / hy) * (180 / PI));
-  }
-  else if (hy < 0)
-  {
-    heading = - (atan(hx / hy) * (180 / PI));
-  }
-  else // hy = 0
-  {
-    if (hx < 0) heading = 180;
-    else heading = 0;
-  }
-  
-  Serial.print("Heading: ");
-  Serial.println(heading, 2);
+    imu.pitch+= 82;
+    imu.roll+=90;
+
+    //execute movement of arm
+    if((imu.roll <= 180) && (imu.pitch <= 180))
+    {
+      //JASON SHOULD KNOW WHAT SERVOS CORRESPOND TO WHAT PINS
+      //ERICK SHOULD KNOW WHAT SERVOS DO WHAT
+      switch(imu.first) {
+        case 1:
+          break;
+        case 2:
+          break;
+        case 3:
+          break;
+        case 4:
+          break;
+        case 5:
+          break;
+        case 6:
+          break;
+      }
+      switch(imu.second) {
+        case 1:
+          break;
+        case 2:
+          break;
+        case 3:
+          break;
+        case 4:
+          break;
+        case 5:
+          break;
+        case 6:
+          break;
+      }
+      wrist.write( imu.pitch);
+      cuff.write(180 - imu.roll);
+    Serial.print(imu.roll); Serial.print("\t"); Serial.println(imu.pitch); 
+    }
+    
 }
-
-// Another fun function that does calculations based on the
-// acclerometer data. This function will print your LSM9DS0's
-// orientation -- it's roll and pitch angles.
-void printOrientation(float x, float y, float z)
-{
- // float pitch, roll;
-  
-  pitch = atan2(x, sqrt(y * y) + (z * z));
-  roll = atan2(y, sqrt(x * x) + (z * z));
-  pitch *= 180.0 / PI;
-  roll *= 180.0 / PI;
-  
-  Serial.print("Pitch, Roll: ");
-  Serial.print(pitch, 2);
-  Serial.print(", ");
-  Serial.println(roll, 2);
-}
-
 
 // Implementation of Sebastian Madgwick's "...efficient orientation filter for... inertial/magnetic sensor arrays"
 // (see http://www.x-io.co.uk/category/open-source/ for examples and more details)
@@ -403,190 +360,95 @@ void printOrientation(float x, float y, float z)
 // device orientation -- which can be converted to yaw, pitch, and roll. Useful for stabilizing quadcopters, etc.
 // The performance of the orientation filter is at least as good as conventional Kalman-based filtering algorithms
 // but is much less computationally intensive---it can be performed on a 3.3 V Pro Mini operating at 8 MHz!
-        void MadgwickQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz)
-        {
-            float q1 = q[0], q2 = q[1], q3 = q[2], q4 = q[3];   // short name local variable for readability
-            float norm;
-            float hx, hy, _2bx, _2bz;
-            float s1, s2, s3, s4;
-            float qDot1, qDot2, qDot3, qDot4;
 
-            // Auxiliary variables to avoid repeated arithmetic
-            float _2q1mx;
-            float _2q1my;
-            float _2q1mz;
-            float _2q2mx;
-            float _4bx;
-            float _4bz;
-            float _2q1 = 2.0f * q1;
-            float _2q2 = 2.0f * q2;
-            float _2q3 = 2.0f * q3;
-            float _2q4 = 2.0f * q4;
-            float _2q1q3 = 2.0f * q1 * q3;
-            float _2q3q4 = 2.0f * q3 * q4;
-            float q1q1 = q1 * q1;
-            float q1q2 = q1 * q2;
-            float q1q3 = q1 * q3;
-            float q1q4 = q1 * q4;
-            float q2q2 = q2 * q2;
-            float q2q3 = q2 * q3;
-            float q2q4 = q2 * q4;
-            float q3q3 = q3 * q3;
-            float q3q4 = q3 * q4;
-            float q4q4 = q4 * q4;
+void MadgwickQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz, imu_data& imu)
+{
+    float q1 = imu.q[0], q2 = imu.q[1], q3 = imu.q[2], q4 = imu.q[3];   // short name local variable for readability
+    float norm;
+    float hx, hy, _2bx, _2bz;
+    float s1, s2, s3, s4;
+    float qDot1, qDot2, qDot3, qDot4;
 
-            // Normalise accelerometer measurement
-            norm = sqrt(ax * ax + ay * ay + az * az);
-            if (norm == 0.0f) return; // handle NaN
-            norm = 1.0f/norm;
-            ax *= norm;
-            ay *= norm;
-            az *= norm;
+    // Auxiliary variables to avoid repeated arithmetic
+    float _2q1mx;
+    float _2q1my;
+    float _2q1mz;
+    float _2q2mx;
+    float _4bx;
+    float _4bz;
+    float _2q1 = 2.0f * q1;
+    float _2q2 = 2.0f * q2;
+    float _2q3 = 2.0f * q3;
+    float _2q4 = 2.0f * q4;
+    float _2q1q3 = 2.0f * q1 * q3;
+    float _2q3q4 = 2.0f * q3 * q4;
+    float q1q1 = q1 * q1;
+    float q1q2 = q1 * q2;
+    float q1q3 = q1 * q3;
+    float q1q4 = q1 * q4;
+    float q2q2 = q2 * q2;
+    float q2q3 = q2 * q3;
+    float q2q4 = q2 * q4;
+    float q3q3 = q3 * q3;
+    float q3q4 = q3 * q4;
+    float q4q4 = q4 * q4;
 
-            // Normalise magnetometer measurement
-            norm = sqrt(mx * mx + my * my + mz * mz);
-            if (norm == 0.0f) return; // handle NaN
-            norm = 1.0f/norm;
-            mx *= norm;
-            my *= norm;
-            mz *= norm;
+    // Normalise accelerometer measurement
+    norm = sqrt(ax * ax + ay * ay + az * az);
+    if (norm == 0.0f) return; // handle NaN
+    norm = 1.0f/norm;
+    ax *= norm;
+    ay *= norm;
+    az *= norm;
 
-            // Reference direction of Earth's magnetic field
-            _2q1mx = 2.0f * q1 * mx;
-            _2q1my = 2.0f * q1 * my;
-            _2q1mz = 2.0f * q1 * mz;
-            _2q2mx = 2.0f * q2 * mx;
-            hx = mx * q1q1 - _2q1my * q4 + _2q1mz * q3 + mx * q2q2 + _2q2 * my * q3 + _2q2 * mz * q4 - mx * q3q3 - mx * q4q4;
-            hy = _2q1mx * q4 + my * q1q1 - _2q1mz * q2 + _2q2mx * q3 - my * q2q2 + my * q3q3 + _2q3 * mz * q4 - my * q4q4;
-            _2bx = sqrt(hx * hx + hy * hy);
-            _2bz = -_2q1mx * q3 + _2q1my * q2 + mz * q1q1 + _2q2mx * q4 - mz * q2q2 + _2q3 * my * q4 - mz * q3q3 + mz * q4q4;
-            _4bx = 2.0f * _2bx;
-            _4bz = 2.0f * _2bz;
+    // Normalise magnetometer measurement
+    norm = sqrt(mx * mx + my * my + mz * mz);
+    if (norm == 0.0f) return; // handle NaN
+    norm = 1.0f/norm;
+    mx *= norm;
+    my *= norm;
+    mz *= norm;
 
-            // Gradient decent algorithm corrective step
-            s1 = -_2q3 * (2.0f * q2q4 - _2q1q3 - ax) + _2q2 * (2.0f * q1q2 + _2q3q4 - ay) - _2bz * q3 * (_2bx * (0.5f - q3q3 - q4q4) + _2bz * (q2q4 - q1q3) - mx) + (-_2bx * q4 + _2bz * q2) * (_2bx * (q2q3 - q1q4) + _2bz * (q1q2 + q3q4) - my) + _2bx * q3 * (_2bx * (q1q3 + q2q4) + _2bz * (0.5f - q2q2 - q3q3) - mz);
-            s2 = _2q4 * (2.0f * q2q4 - _2q1q3 - ax) + _2q1 * (2.0f * q1q2 + _2q3q4 - ay) - 4.0f * q2 * (1.0f - 2.0f * q2q2 - 2.0f * q3q3 - az) + _2bz * q4 * (_2bx * (0.5f - q3q3 - q4q4) + _2bz * (q2q4 - q1q3) - mx) + (_2bx * q3 + _2bz * q1) * (_2bx * (q2q3 - q1q4) + _2bz * (q1q2 + q3q4) - my) + (_2bx * q4 - _4bz * q2) * (_2bx * (q1q3 + q2q4) + _2bz * (0.5f - q2q2 - q3q3) - mz);
-            s3 = -_2q1 * (2.0f * q2q4 - _2q1q3 - ax) + _2q4 * (2.0f * q1q2 + _2q3q4 - ay) - 4.0f * q3 * (1.0f - 2.0f * q2q2 - 2.0f * q3q3 - az) + (-_4bx * q3 - _2bz * q1) * (_2bx * (0.5f - q3q3 - q4q4) + _2bz * (q2q4 - q1q3) - mx) + (_2bx * q2 + _2bz * q4) * (_2bx * (q2q3 - q1q4) + _2bz * (q1q2 + q3q4) - my) + (_2bx * q1 - _4bz * q3) * (_2bx * (q1q3 + q2q4) + _2bz * (0.5f - q2q2 - q3q3) - mz);
-            s4 = _2q2 * (2.0f * q2q4 - _2q1q3 - ax) + _2q3 * (2.0f * q1q2 + _2q3q4 - ay) + (-_4bx * q4 + _2bz * q2) * (_2bx * (0.5f - q3q3 - q4q4) + _2bz * (q2q4 - q1q3) - mx) + (-_2bx * q1 + _2bz * q3) * (_2bx * (q2q3 - q1q4) + _2bz * (q1q2 + q3q4) - my) + _2bx * q2 * (_2bx * (q1q3 + q2q4) + _2bz * (0.5f - q2q2 - q3q3) - mz);
-            norm = sqrt(s1 * s1 + s2 * s2 + s3 * s3 + s4 * s4);    // normalise step magnitude
-            norm = 1.0f/norm;
-            s1 *= norm;
-            s2 *= norm;
-            s3 *= norm;
-            s4 *= norm;
+    // Reference direction of Earth's magnetic field
+    _2q1mx = 2.0f * q1 * mx;
+    _2q1my = 2.0f * q1 * my;
+    _2q1mz = 2.0f * q1 * mz;
+    _2q2mx = 2.0f * q2 * mx;
+    hx = mx * q1q1 - _2q1my * q4 + _2q1mz * q3 + mx * q2q2 + _2q2 * my * q3 + _2q2 * mz * q4 - mx * q3q3 - mx * q4q4;
+    hy = _2q1mx * q4 + my * q1q1 - _2q1mz * q2 + _2q2mx * q3 - my * q2q2 + my * q3q3 + _2q3 * mz * q4 - my * q4q4;
+    _2bx = sqrt(hx * hx + hy * hy);
+    _2bz = -_2q1mx * q3 + _2q1my * q2 + mz * q1q1 + _2q2mx * q4 - mz * q2q2 + _2q3 * my * q4 - mz * q3q3 + mz * q4q4;
+    _4bx = 2.0f * _2bx;
+    _4bz = 2.0f * _2bz;
 
-            // Compute rate of change of quaternion
-            qDot1 = 0.5f * (-q2 * gx - q3 * gy - q4 * gz) - beta * s1;
-            qDot2 = 0.5f * (q1 * gx + q3 * gz - q4 * gy) - beta * s2;
-            qDot3 = 0.5f * (q1 * gy - q2 * gz + q4 * gx) - beta * s3;
-            qDot4 = 0.5f * (q1 * gz + q2 * gy - q3 * gx) - beta * s4;
+    // Gradient decent algorithm corrective step
+    s1 = -_2q3 * (2.0f * q2q4 - _2q1q3 - ax) + _2q2 * (2.0f * q1q2 + _2q3q4 - ay) - _2bz * q3 * (_2bx * (0.5f - q3q3 - q4q4) + _2bz * (q2q4 - q1q3) - mx) + (-_2bx * q4 + _2bz * q2) * (_2bx * (q2q3 - q1q4) + _2bz * (q1q2 + q3q4) - my) + _2bx * q3 * (_2bx * (q1q3 + q2q4) + _2bz * (0.5f - q2q2 - q3q3) - mz);
+    s2 = _2q4 * (2.0f * q2q4 - _2q1q3 - ax) + _2q1 * (2.0f * q1q2 + _2q3q4 - ay) - 4.0f * q2 * (1.0f - 2.0f * q2q2 - 2.0f * q3q3 - az) + _2bz * q4 * (_2bx * (0.5f - q3q3 - q4q4) + _2bz * (q2q4 - q1q3) - mx) + (_2bx * q3 + _2bz * q1) * (_2bx * (q2q3 - q1q4) + _2bz * (q1q2 + q3q4) - my) + (_2bx * q4 - _4bz * q2) * (_2bx * (q1q3 + q2q4) + _2bz * (0.5f - q2q2 - q3q3) - mz);
+    s3 = -_2q1 * (2.0f * q2q4 - _2q1q3 - ax) + _2q4 * (2.0f * q1q2 + _2q3q4 - ay) - 4.0f * q3 * (1.0f - 2.0f * q2q2 - 2.0f * q3q3 - az) + (-_4bx * q3 - _2bz * q1) * (_2bx * (0.5f - q3q3 - q4q4) + _2bz * (q2q4 - q1q3) - mx) + (_2bx * q2 + _2bz * q4) * (_2bx * (q2q3 - q1q4) + _2bz * (q1q2 + q3q4) - my) + (_2bx * q1 - _4bz * q3) * (_2bx * (q1q3 + q2q4) + _2bz * (0.5f - q2q2 - q3q3) - mz);
+    s4 = _2q2 * (2.0f * q2q4 - _2q1q3 - ax) + _2q3 * (2.0f * q1q2 + _2q3q4 - ay) + (-_4bx * q4 + _2bz * q2) * (_2bx * (0.5f - q3q3 - q4q4) + _2bz * (q2q4 - q1q3) - mx) + (-_2bx * q1 + _2bz * q3) * (_2bx * (q2q3 - q1q4) + _2bz * (q1q2 + q3q4) - my) + _2bx * q2 * (_2bx * (q1q3 + q2q4) + _2bz * (0.5f - q2q2 - q3q3) - mz);
+    norm = sqrt(s1 * s1 + s2 * s2 + s3 * s3 + s4 * s4);    // normalise step magnitude
+    norm = 1.0f/norm;
+    s1 *= norm;
+    s2 *= norm;
+    s3 *= norm;
+    s4 *= norm;
 
-            // Integrate to yield quaternion
-            q1 += qDot1 * deltat;
-            q2 += qDot2 * deltat;
-            q3 += qDot3 * deltat;
-            q4 += qDot4 * deltat;
-            norm = sqrt(q1 * q1 + q2 * q2 + q3 * q3 + q4 * q4);    // normalise quaternion
-            norm = 1.0f/norm;
-            q[0] = q1 * norm;
-            q[1] = q2 * norm;
-            q[2] = q3 * norm;
-            q[3] = q4 * norm;
+    // Compute rate of change of quaternion
+    qDot1 = 0.5f * (-q2 * gx - q3 * gy - q4 * gz) - beta * s1;
+    qDot2 = 0.5f * (q1 * gx + q3 * gz - q4 * gy) - beta * s2;
+    qDot3 = 0.5f * (q1 * gy - q2 * gz + q4 * gx) - beta * s3;
+    qDot4 = 0.5f * (q1 * gz + q2 * gy - q3 * gx) - beta * s4;
 
-        }
-  
-  
-  
- // Similar to Madgwick scheme but uses proportional and integral filtering on the error between estimated reference vectors and
- // measured ones. 
-            void MahonyQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz)
-        {
-            float q1 = q[0], q2 = q[1], q3 = q[2], q4 = q[3];   // short name local variable for readability
-            float norm;
-            float hx, hy, bx, bz;
-            float vx, vy, vz, wx, wy, wz;
-            float ex, ey, ez;
-            float pa, pb, pc;
-
-            // Auxiliary variables to avoid repeated arithmetic
-            float q1q1 = q1 * q1;
-            float q1q2 = q1 * q2;
-            float q1q3 = q1 * q3;
-            float q1q4 = q1 * q4;
-            float q2q2 = q2 * q2;
-            float q2q3 = q2 * q3;
-            float q2q4 = q2 * q4;
-            float q3q3 = q3 * q3;
-            float q3q4 = q3 * q4;
-            float q4q4 = q4 * q4;   
-
-            // Normalise accelerometer measurement
-            norm = sqrt(ax * ax + ay * ay + az * az);
-            if (norm == 0.0f) return; // handle NaN
-            norm = 1.0f / norm;        // use reciprocal for division
-            ax *= norm;
-            ay *= norm;
-            az *= norm;
-
-            // Normalise magnetometer measurement
-            norm = sqrt(mx * mx + my * my + mz * mz);
-            if (norm == 0.0f) return; // handle NaN
-            norm = 1.0f / norm;        // use reciprocal for division
-            mx *= norm;
-            my *= norm;
-            mz *= norm;
-
-            // Reference direction of Earth's magnetic field
-            hx = 2.0f * mx * (0.5f - q3q3 - q4q4) + 2.0f * my * (q2q3 - q1q4) + 2.0f * mz * (q2q4 + q1q3);
-            hy = 2.0f * mx * (q2q3 + q1q4) + 2.0f * my * (0.5f - q2q2 - q4q4) + 2.0f * mz * (q3q4 - q1q2);
-            bx = sqrt((hx * hx) + (hy * hy));
-            bz = 2.0f * mx * (q2q4 - q1q3) + 2.0f * my * (q3q4 + q1q2) + 2.0f * mz * (0.5f - q2q2 - q3q3);
-
-            // Estimated direction of gravity and magnetic field
-            vx = 2.0f * (q2q4 - q1q3);
-            vy = 2.0f * (q1q2 + q3q4);
-            vz = q1q1 - q2q2 - q3q3 + q4q4;
-            wx = 2.0f * bx * (0.5f - q3q3 - q4q4) + 2.0f * bz * (q2q4 - q1q3);
-            wy = 2.0f * bx * (q2q3 - q1q4) + 2.0f * bz * (q1q2 + q3q4);
-            wz = 2.0f * bx * (q1q3 + q2q4) + 2.0f * bz * (0.5f - q2q2 - q3q3);  
-
-            // Error is cross product between estimated direction and measured direction of gravity
-            ex = (ay * vz - az * vy) + (my * wz - mz * wy);
-            ey = (az * vx - ax * vz) + (mz * wx - mx * wz);
-            ez = (ax * vy - ay * vx) + (mx * wy - my * wx);
-            if (Ki > 0.0f)
-            {
-                eInt[0] += ex;      // accumulate integral error
-                eInt[1] += ey;
-                eInt[2] += ez;
-            }
-            else
-            {
-                eInt[0] = 0.0f;     // prevent integral wind up
-                eInt[1] = 0.0f;
-                eInt[2] = 0.0f;
-            }
-
-            // Apply feedback terms
-            gx = gx + Kp * ex + Ki * eInt[0];
-            gy = gy + Kp * ey + Ki * eInt[1];
-            gz = gz + Kp * ez + Ki * eInt[2];
-
-            // Integrate rate of change of quaternion
-            pa = q2;
-            pb = q3;
-            pc = q4;
-            q1 = q1 + (-q2 * gx - q3 * gy - q4 * gz) * (0.5f * deltat);
-            q2 = pa + (q1 * gx + pb * gz - pc * gy) * (0.5f * deltat);
-            q3 = pb + (q1 * gy - pa * gz + pc * gx) * (0.5f * deltat);
-            q4 = pc + (q1 * gz + pa * gy - pb * gx) * (0.5f * deltat);
-
-            // Normalise quaternion
-            norm = sqrt(q1 * q1 + q2 * q2 + q3 * q3 + q4 * q4);
-            norm = 1.0f / norm;
-            q[0] = q1 * norm;
-            q[1] = q2 * norm;
-            q[2] = q3 * norm;
-            q[3] = q4 * norm;
- 
-        }
+    // Integrate to yield quaternion
+    q1 += qDot1 * deltat;
+    q2 += qDot2 * deltat;
+    q3 += qDot3 * deltat;
+    q4 += qDot4 * deltat;
+    norm = sqrt(q1 * q1 + q2 * q2 + q3 * q3 + q4 * q4);    // normalise quaternion
+    norm = 1.0f/norm;
+    
+    imu.q[0] = q1 * norm;
+    imu.q[1] = q2 * norm;
+    imu.q[2] = q3 * norm;
+    imu.q[3] = q4 * norm;
+}
