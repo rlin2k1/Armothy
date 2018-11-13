@@ -1,92 +1,3 @@
-/*****************************************************************
-LSM9DS0_AHRS.ino
-SFE_LSM9DS0 Library AHRS Data Fusion Example Code
-Jim Lindblom @ SparkFun Electronics
-Original Creation Date: February 18, 2014
-https://github.com/sparkfun/LSM9DS0_Breakout
-
-Modified by Kris Winer, April 4, 2014
-
-The LSM9DS0 is a versatile 9DOF sensor. It has a built-in
-accelerometer, gyroscope, and magnetometer. Very cool! Plus it
-functions over either SPI or I2C.
-
-This Arduino sketch utilizes Jim Lindblom's SFE_LSM9DS0 library to generate the basic sensor data
-for use in two sensor fusion algorithms becoming increasingly popular with DIY quadcopter and robotics engineers. 
-
-Like the original LSM9SD0_simple.ino sketch, it'll demo the following:
-* How to create a LSM9DS0 object, using a constructor (global
-  variables section).
-* How to use the begin() function of the LSM9DS0 class.
-* How to read the gyroscope, accelerometer, and magnetometer
-  using the readGryo(), readAccel(), readMag() functions and the
-  gx, gy, gz, ax, ay, az, mx, my, and mz variables.
-* How to calculate actual acceleration, rotation speed, magnetic
-  field strength using the calcAccel(), calcGyro() and calcMag()
-  functions.
-  
-In addition, the sketch will demo:
-* How to check for data updates using interrupts
-* How to display output at a rate different from the sensor data update and fusion filter update rates
-* How to specify the accelerometer anti-aliasing (low-pass) filter rate
-* How to use the data from the LSM9DS0 to fuse the sensor data into a quaternion representation of the sensor frame
-  orientation relative to a fixed Earth frame providing absolute orientation information for subsequent use.
-* An example of how to use the quaternion data to generate standard aircraft orientation data in the form of
-  Tait-Bryan angles representing the sensor yaw, pitch, and roll angles suitable for any vehicle stablization control application.
-
-Hardware setup: This library supports communicating with the
-LSM9DS0 over either I2C or SPI. If you're using I2C, these are
-the only connections that need to be made:
-  LSM9DS0 --------- Arduino
-   SCL ---------- SCL (A5 on older 'Duinos')
-   SDA ---------- SDA (A4 on older 'Duinos')
-   VDD ------------- 3.3V
-   GND ------------- GND
-         DRDYG-------------4   (gyro data ready interrupt, can be any digital pin)
-         INTX1-------------3   (accelerometer data ready interrupt, can be any digital pin)
-         INTX2-------------2   (magnetometer data ready interrupt, can be any digital pin)
-(CSG, CSXM, SDOG, and SDOXM should all be pulled high jumpers on 
-  the breakout board will do this for you.)
-  
- Note: The LSM9DS0 in the I2C mode uses the Arduino Wire library. 
- Because the sensor is not 5V tolerant, we are using a 3.3 V 8 MHz Pro Mini or a 3.3 V Teensy 3.1.
- We have disabled the internal pull-ups used by the Wire library in the Wire.h/twi.c utility file.
- We are also using the 400 kHz fast I2C mode by setting the TWI_FREQ  to 400000L /twi.h utility file.
-  
-If you're using SPI, here is an example hardware setup:
-  LSM9DS0 --------- Arduino
-          CSG -------------- 9
-          CSXM ------------- 10
-          SDOG ------------- 12
-          SDOXM ------------ 12 (tied to SDOG)
-          SCL -------------- 13
-          SDA -------------- 11
-          VDD -------------- 3.3V
-          GND -------------- GND
-  
-The LSM9DS0 has a maximum voltage of 3.6V. Make sure you power it
-off the 3.3V rail! And either use level shifters between SCL
-and SDA or just use a 3.3V Arduino Pro.   
-
-In addition, this sketch uses a Nokia 5110 48 x 84 pixel display which requires 
-digital pins 5 - 9 described below. If using SPI you might need to press one of the A0 - A3 pins
-into service as a digital input instead.
-
-Development environment specifics:
-  IDE: Arduino 1.0.5
-  Hardware Platform: Arduino Pro 3.3V/8MHz
-  LSM9DS0 Breakout Version: 1.0
-
-This code is beerware. If you see me (or any other SparkFun 
-employee) at the local, and you've found our code helpful, please 
-buy us a round!
-
-Distributed as-is; no warranty is given.
-*****************************************************************/
-
-// The SFE_LSM9DS0 requires both the SPI and Wire libraries.
-// Unfortunately, you'll need to include both in the Arduino
-// sketch, before including the SFE_LSM9DS0 library.
 #include <SPI.h> // Included for SFE_LSM9DS0 library
 #include <Wire.h>
 #include <Servo.h>
@@ -117,8 +28,8 @@ const int BASE = 5;
 const int SHOULDER = 6; 
 const int ELBOW = 7;
 const int CUFF = 8;
-const int WRIST = 13;
-const int GRIPPER = 14;
+const int WRIST = 10;
+const int GRIPPER = 9;
 const int def_angle = 90;
 const int B_CAM = 90;
 const int S_CAM = 90;
@@ -191,7 +102,6 @@ imu_data* imu1 = new imu_data;
 imu_data* imu2 = new imu_data;
 imu_data* imu3 = new imu_data;
 String readString;
-
 
 void update_movement(imu_data* imu) {
     imu->yaw   = atan2(2.0f * (imu->q[1] * imu->q[2] + imu->q[0] * imu->q[3]), imu->q[0] * imu->q[0] + imu->q[1] * imu->q[1] - imu->q[2] * imu->q[2] - imu->q[3] * imu->q[3]);   
@@ -345,11 +255,9 @@ void MadgwickQuaternionUpdate(float ax, float ay, float az, float gx, float gy, 
 }
 
 
-void setup()
-{
-  Serial.begin(9600); // Start serial at 38400 bps
+void setup() {
+  Serial.begin(9600);
   BT.begin(38400);
-  //Setup for servos and initialization
   base.attach(BASE);
   base.write(def_angle);
   shoulder.attach(SHOULDER);
@@ -359,129 +267,29 @@ void setup()
   cuff.attach(CUFF);
   cuff.write(C_CAM);
   wrist.attach(WRIST);
-  wrist.write(W_CAM);
-  gripper.attach(GRIPPER);
-  gripper.write(90);
-  Serial.println("Arm Side");
-
+  //wrist.write(W_CAM);
+  Serial.println("serial delimit test 1.0"); // so I can keep track of what is loaded
 }
 
-void loop()
-{
-  packet p;
-  imu_data* imu = nullptr;
-  if(BT.available())
-  { 
-    char c = BT.read();  //gets one byte from serial buffer
-    if (c == '\n') 
-    {
-      if (readString.length() >1) 
-      {
-        readString += c;
-        //Serial.print(readString);
-        char* cdata = readString.c_str();
-        char* data = strtok(cdata, ",");
-        int whichimu = *data - 97;
-        switch(whichimu)
-        {
-          case 0:
-            imu = imu1;
-            break;
-          case 1:
-            imu = imu2;
-            break;
-          case 2:
-            imu = imu3;
-            break;
-          default:
-            readString = "";
-            break;
-        }
-        if(whichimu == 0)
-        {
-          data = strtok(0, ",");
-          p.flexAngle = atof(data);
-        }
-        data = strtok(0, ",");
-        p.ax = atof(data);
-        data = strtok(0, ",");
-        p.ay = atof(data);
-        data = strtok(0, ",");
-        p.az = atof(data);
-        data = strtok(0, ",");
-        p.gx = atof(data);
-        data = strtok(0, ",");
-        p.gy = atof(data);
-        data = strtok(0, ",");
-        p.gz = atof(data);
-        data = strtok(0, ",");
-        p.mx = atof(data);
-        data = strtok(0, ",");
-        p.my = atof(data);
-        data = strtok(0, "\n");
-        p.mz = atof(data);
-        Serial.println(p.ax);
-        readString="";
+void loop() {
 
+  //expect a string like wer,qwe rty,123 456,hyre kjhg,
+  //or like hello world,who are you?,bye!,
+
+  if (BT.available())  {
+    char c = BT.read();  //gets one byte from serial buffer
+    if (c == '\n') {
+      if (readString.length() >1) {
+        readString += c;
+        Serial.print(readString); //prints string to serial port out
+        //Do stuff
+        readString="";
         //clears variable for new input
       }
     }  
-     else 
-     {     
+    else {     
       readString += c; //makes the string readString
-     }  
+    }
   }
-  
-  Now = micros();
-  deltat = ((Now - lastUpdate)/1000000.0f); // set integration time by time elapsed since last filter update
-  lastUpdate = Now;
-  // Sensors x- and y-axes are aligned but magnetometer z-axis (+ down) is opposite to z-axis (+ up) of accelerometer and gyro!
-  // This is ok by aircraft orientation standards!  
-  // Pass gyro rate as rad/s
-   MadgwickQuaternionUpdate(p.ax, p.ay, p.az, p.gx*PI/180.0f, p.gy*PI/180.0f, p.gz*PI/180.0f, p.mx, p.my, p.mz, imu);
-   
- //MahonyQuaternionUpdate(ax, ay, az, gx*PI/180.0f, gy*PI/180.0f, gz*PI/180.0f, mx, my, mz);
-
-    // Serial print and/or display at 0.5 s rate independent of data rates
-    delt_t = millis() - count;
-    if (delt_t > 10) { // update LCD once per half-second independent of read rate
-
-
-  // Define output variables from updated quaternion---these are Tait-Bryan angles, commonly used in aircraft orientation.
-  // In this coordinate system, the positive z-axis is down toward Earth. 
-  // Yaw is the angle between Sensor x-axis and Earth magnetic North (or true North if corrected for local declination), 
-  // looking down on the sensor positive yaw is counterclockwise.
-  // Pitch is angle between sensor x-axis and Earth ground plane, toward the Earth is positive, up toward the sky is negative.
-  // Roll is angle between sensor y-axis and Earth ground plane, y-axis up is positive roll.
-  // These arise from the definition of the homogeneous rotation matrix constructed from quaternions.
-  // Tait-Bryan angles as well as Euler angles are non-commutative; that is, to get the correct orientation the rotations must be
-  // applied in the correct order which for this configuration is yaw, pitch, and then roll.
-  // For more see http://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles which has additional links.
-  update_movement(imu1);
-  update_movement(imu2);
-
-   // Serial.print(roll); Serial.print("\t"); Serial.print(pitch); Serial.print("\t"); Serial.println(yaw);
-
-  
-    // With ODR settings of 400 Hz, 380 Hz, and 25 Hz for the accelerometer, gyro, and magnetometer, respectively,
-    // the filter is updating at a ~125 Hz rate using the Madgwick scheme and ~165 Hz using the Mahony scheme 
-    // even though the display refreshes at only 2 Hz.
-    // The filter update rate can be increased by reducing the rate of data reading. The optimal implementation is
-    // one which balances the competing rates so they are about the same; that is, the filter updates the sensor orientation
-    // at about the same rate the data is changing. Of course, other implementations are possible. One might consider
-    // updating the filter at twice the average new data rate to allow for finite filter convergence times.
-    // The filter update rate is determined mostly by the mathematical steps in the respective algorithms, 
-    // the processor speed (8 MHz for the 3.3V Pro Mini), and the sensor ODRs, especially the magnetometer ODR:
-    // smaller ODRs for the magnetometer produce the above rates, maximum magnetometer ODR of 100 Hz produces
-    // filter update rates of ~110 and ~135 Hz for the Madgwick and Mahony schemes, respectively. 
-    // This is presumably because the magnetometer read takes longer than the gyro or accelerometer reads.
-    // With low ODR settings of 100 Hz, 95 Hz, and 6.25 Hz for the accelerometer, gyro, and magnetometer, respectively,
-    // the filter is updating at a ~150 Hz rate using the Madgwick scheme and ~200 Hz using the Mahony scheme.
-    // These filter update rates should be fast enough to maintain accurate platform orientation for 
-    // stabilization control of a fast-moving robot or quadcopter. Compare to the update rate of 200 Hz
-    // produced by the on-board Digital Motion Processor of Invensense's MPU6050 6 DoF and MPU9150 9DoF sensors.
-    // The 3.3 V 8 MHz Pro Mini is doing pretty well!
-
-    count = millis();
-    }   
 }
+
