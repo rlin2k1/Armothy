@@ -113,12 +113,12 @@ SoftwareSerial BT(10, 11);
 ///////////////////////////////
 // Interrupt and Servo Pin Definitions //
 ///////////////////////////////
-const int BASE = 5;
-const int SHOULDER = 6; 
-const int ELBOW = 7;
-const int CUFF = 8;
-const int WRIST = 13;
-const int GRIPPER = 14;
+const int BASE = 2;
+const int SHOULDER = 3;
+const int ELBOW = 4;
+const int CUFF = 5;
+const int WRIST = 6;
+const int GRIPPER = 7;
 const int def_angle = 90;
 const int B_CAM = 90;
 const int S_CAM = 90;
@@ -170,8 +170,7 @@ struct imu_data {
   double pitch;
   double roll;
   float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};    // vector to hold quaternion
-  int first;
-  int second;
+  float clawDeg;
 };
 
 struct packet {
@@ -194,55 +193,44 @@ String readString;
 
 
 void update_movement(imu_data* imu) {
-    imu->yaw   = atan2(2.0f * (imu->q[1] * imu->q[2] + imu->q[0] * imu->q[3]), imu->q[0] * imu->q[0] + imu->q[1] * imu->q[1] - imu->q[2] * imu->q[2] - imu->q[3] * imu->q[3]);   
+    /*imu->yaw   = atan2(2.0f * (imu->q[1] * imu->q[2] + imu->q[0] * imu->q[3]), imu->q[0] * imu->q[0] + imu->q[1] * imu->q[1] - imu->q[2] * imu->q[2] - imu->q[3] * imu->q[3]);   
     imu->pitch = -asin(2.0f * (imu->q[1] * imu->q[3] - imu->q[0] * imu->q[2]));
     imu->roll  = atan2(2.0f * (imu->q[0] * imu->q[1] + imu->q[2] * imu->q[3]), imu->q[0] * imu->q[0] - imu->q[1] * imu->q[1] - imu->q[2] * imu->q[2] + imu->q[3] * imu->q[3]);
     imu->pitch *= 180.0f / PI;
     imu->yaw   *= 180.0f / PI; 
     imu->yaw   -= 11; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
-    imu->roll  *= 180.0f / PI;
-
-    imu->pitch+= 82;
-    imu->roll+=90;
-
-    //execute movement of arm
-    if((imu->roll <= 180) && (imu->pitch <= 180))
+    imu->roll  *= 180.0f / PI;*/
+    if(imu == imu1)
     {
-      //JASON SHOULD KNOW WHAT SERVOS CORRESPOND TO WHAT PINS
-      //ERICK SHOULD KNOW WHAT SERVOS DO WHAT
-      switch(imu->first) {
-        case 1:
-          break;
-        case 2:
-          break;
-        case 3:
-          break;
-        case 4:
-          break;
-        case 5:
-          break;
-        case 6:
-          break;
-      }
-      switch(imu->second) {
-        case 1:
-          break;
-        case 2:
-          break;
-        case 3:
-          break;
-        case 4:
-          break;
-        case 5:
-          break;
-        case 6:
-          break;
-      }
-      wrist.write( imu->pitch);
-      cuff.write(180 - imu->roll);
-    //Serial.print(imu->roll); Serial.print("\t"); Serial.println(imu->pitch); 
+      Serial.println(imu->clawDeg);
+      gripper.write(180 - imu->clawDeg);
+      //imu->pitch+= 82;
+      //imu->roll+=90;
+
+      //execute movement of arm
+      //if((imu->roll <= 180) && (imu->pitch <= 180))
+      //{
+        //JASON SHOULD KNOW WHAT SERVOS CORRESPOND TO WHAT PINS
+        //ERICK SHOULD KNOW WHAT SERVOS DO WHAT
+
+        //wrist.write( imu->roll);
+        //cuff.write(180 - imu->pitch);
+        //gripper.write(imu->clawDeg);
+        //Serial.print(imu->roll); Serial.print("\t"); Serial.println(imu->pitch); 
+      //}
     }
-    
+    else if(imu == imu2)
+    {
+      //if((imu->roll <= 180) && (imu->pitch <= 180))
+      //{
+       // base.write(imu->pitch);
+       // shoulder.write(180 - imu->roll);
+      //}
+    }
+    else if(imu == imu3)
+    {
+      
+    }
 }
 
 // Implementation of Sebastian Madgwick's "...efficient orientation filter for... inertial/magnetic sensor arrays"
@@ -421,6 +409,7 @@ void loop()
         data = strtok(0, "\n");
         p.mz = atof(data);
         Serial.println(p.ax);
+        imu->clawDeg = p.flexAngle;
         readString="";
 
         //clears variable for new input
@@ -438,10 +427,8 @@ void loop()
   // Sensors x- and y-axes are aligned but magnetometer z-axis (+ down) is opposite to z-axis (+ up) of accelerometer and gyro!
   // This is ok by aircraft orientation standards!  
   // Pass gyro rate as rad/s
-   MadgwickQuaternionUpdate(p.ax, p.ay, p.az, p.gx*PI/180.0f, p.gy*PI/180.0f, p.gz*PI/180.0f, p.mx, p.my, p.mz, imu);
+   //MadgwickQuaternionUpdate(p.ax, p.ay, p.az, p.gx*PI/180.0f, p.gy*PI/180.0f, p.gz*PI/180.0f, p.mx, p.my, p.mz, imu);
    
- //MahonyQuaternionUpdate(ax, ay, az, gx*PI/180.0f, gy*PI/180.0f, gz*PI/180.0f, mx, my, mz);
-
     // Serial print and/or display at 0.5 s rate independent of data rates
     delt_t = millis() - count;
     if (delt_t > 10) { // update LCD once per half-second independent of read rate
@@ -457,9 +444,7 @@ void loop()
   // Tait-Bryan angles as well as Euler angles are non-commutative; that is, to get the correct orientation the rotations must be
   // applied in the correct order which for this configuration is yaw, pitch, and then roll.
   // For more see http://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles which has additional links.
-  update_movement(imu1);
-  update_movement(imu2);
-
+  update_movement(imu);
    // Serial.print(roll); Serial.print("\t"); Serial.print(pitch); Serial.print("\t"); Serial.println(yaw);
 
   
