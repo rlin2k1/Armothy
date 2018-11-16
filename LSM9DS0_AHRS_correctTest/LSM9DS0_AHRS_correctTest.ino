@@ -50,24 +50,23 @@ String readString;
 
 void update_movement(imu_data* imu) 
 {
+    //Serial.println(imu->clawDeg);
     if(imu == imu1)
     {
       //Serial.println(imu->clawDeg);
       gripper.write(180 - imu->clawDeg);
-      //imu->pitch+= 82;
-      //imu->roll+=90;
+      
 
       //execute movement of arm
-      //if((imu->roll <= 180) && (imu->pitch <= 180))
-      //{
+      if((imu->roll <= 180) && (imu->pitch <= 180))
+      {
         //JASON SHOULD KNOW WHAT SERVOS CORRESPOND TO WHAT PINS
         //ERICK SHOULD KNOW WHAT SERVOS DO WHAT
 
-        //wrist.write( imu->roll);
-        //cuff.write(180 - imu->pitch);
-        //gripper.write(imu->clawDeg);
-        //Serial.print(imu->roll); Serial.print("\t"); Serial.println(imu->pitch); 
-      //}
+        wrist.write( imu->roll);
+        cuff.write(180 - imu->pitch);
+        Serial.print(imu->roll); Serial.print("\t"); Serial.println(imu->pitch); 
+      }
     }
     else if(imu == imu2)
     {
@@ -105,7 +104,6 @@ void setup()
 
 void loop()
 {
-  packet p;
   imu_data* imu = nullptr;
   if(BT.available())
   { 
@@ -137,7 +135,7 @@ void loop()
         if(whichimu == 0)
         {
           data = strtok(0, ",");
-          imu->clawDeg = p.flexAngle;
+          imu->clawDeg = atof(data);
         }
         data = strtok(0, ",");
         imu->yaw = atof(data);

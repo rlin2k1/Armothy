@@ -233,10 +233,11 @@ void loop()
   packet += String(angle); packet += ',';
   packet += String(imu->yaw); packet += ',';
   packet += String(imu->pitch); packet += ',';
-  packet += String(imu->roll); packet += ',';
+  packet += String(imu->roll);
   
   // put your main code here, to run repeatedly:
   BT.println(packet);
+  delay(1);
   packet = "";
   tcaselect(4);
   
@@ -269,11 +270,16 @@ void loop()
   imu->yaw   *= 180.0f / PI; 
   imu->yaw   -= 13.8; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
   imu->roll  *= 180.0f / PI;
-  
+
+ 
   packet = "b,";
   packet += String(imu->yaw); packet += ',';
   packet += String(imu->pitch); packet += ',';
-  packet += String(imu->roll); packet += ',';
+  packet += String(imu->roll);
   BT.println(packet);
+
+  Serial.println(packet);
+  delay(1);
+
   packet = "";
 }
