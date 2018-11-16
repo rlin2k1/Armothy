@@ -1,4 +1,4 @@
-# Arm-Control-Robot
+# Armothy
 
 Download LSM9DS1 Arduino library: https://github.com/sparkfun/SparkFun_LSM9DS1_Arduino_Library/archive/master.zip
 
