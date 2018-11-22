@@ -23,8 +23,7 @@ SoftwareSerial BT(10,11); // CE, CSN
 // [SPI or I2C Mode declaration],[gyro I2C address],[xm I2C add.]
 LSM9DS0 imu1(MODE_I2C, LSM9DS0_G, LSM9DS0_XM);
 LSM9DS1 imu2(1, LSM9DS1_AG, LSM9DS1_M);
-//LSM9DS1 imu3; 
-
+LSM9DS1 imu3(1, LSM9DS1_AG, LSM9DS1_M);
 //////////////////////
 //address for RF 
 /////////////////////
@@ -103,6 +102,7 @@ void setup()
   Wire.begin();
   Serial.begin(38400); // Start serial at 38400 bps
   BT.begin(38400);
+
   
   tcaselect(7); 
   if(!imu1.begin())
@@ -113,7 +113,7 @@ void setup()
   imu1.setMagScale(imu1.M_SCALE_2GS);
 
   //////////////////////////////////////////
-  //select data for imu2 
+  //SELECT DATA FROM IMU3
   /////////////////////////////////////////
   tcaselect(4);
   
@@ -123,7 +123,19 @@ void setup()
   imu2.setAccelScale(imu2.A_SCALE_2G);
   imu2.setGyroScale(imu2.G_SCALE_245DPS);
   imu2.setMagScale(imu2.M_SCALE_4GS);
+
+
+  /////////////////////////////////////////
+  //SELECT DATA FROM IMU3
+  ////////////////////////////////////////
+  tcaselect(2);
+  
+  if(!imu3.begin())
+    Serial.println("failed to communicate with IMU2!");
     
+  imu3.setAccelScale(imu3.A_SCALE_2G);
+  imu3.setGyroScale(imu3.G_SCALE_245DPS);
+  imu3.setMagScale(imu3.M_SCALE_4GS);
   
   packet = "";
 
@@ -173,23 +185,22 @@ void loop()
   
   
   
-  packet += "a"; packet += ",";
+  packet += "1"; packet += ",";
   packet += String(angle); packet += ",";
   packet += String(imu->yaw); packet += ",";
   packet += String(imu->pitch); packet += ",";
   packet += String(imu->roll);   
   
   Serial.println(packet);
-  BT.println(packet);
-  delay(1);
+  //BT.println(packet);
+  //delay(1);
   packet = ""; 
-
 
 
   //////////////////////////////////////////////////////////
   //////SECOND IMU DATA INPUT
   //////////////////////////////////////////////////////////
-
+  tcaselect(4);
   imu2.readGyro();           // Read raw gyro data
   gx = imu2.calcGyro(imu2.gx) - gbias[0];   // Convert to degrees per seconds, remove gyro biases
   gy = imu2.calcGyro(imu2.gy) - gbias[1];
@@ -224,7 +235,7 @@ void loop()
   
 
 
-  packet += "b"; packet += ",";
+  packet += "2"; packet += ",";
   packet += String(imu->yaw); packet += ",";
   packet += String(imu->pitch); packet += ",";
   packet += String(imu->roll);   
@@ -234,8 +245,57 @@ void loop()
   Serial.println(packet);
   //BT.println(packet);
   //delay(1);
+  packet = ""; 
 
 
+  //////////////////////////////////////////////////////////
+  //////IMU3 DATA INPUT
+  //////////////////////////////////////////////////////////
+  tcaselect(2);
+  imu3.readGyro();           // Read raw gyro data
+  gx = imu3.calcGyro(imu3.gx) - gbias[0];   // Convert to degrees per seconds, remove gyro biases
+  gy = imu3.calcGyro(imu3.gy) - gbias[1];
+  gz = imu3.calcGyro(imu3.gz) - gbias[2];
+    
+  imu3.readAccel();         // Read raw accelerometer data
+  ax = imu3.calcAccel(imu3.ax) - abias[0];   // Convert to g's, remove accelerometer biases
+  ay = imu3.calcAccel(imu3.ay) - abias[1];
+  az = imu3.calcAccel(imu3.az) - abias[2];
+  
+  imu3.readMag();           // Read raw magnetometer data
+  mx = imu3.calcMag(imu3.mx);     // Convert to Gauss and correct for calibration
+  my = imu3.calcMag(imu3.my);
+  mz = imu3.calcMag(imu3.mz);
+    
+  
+  Now3 = micros();
+  deltat3 = ((Now3 - lastUpdate3)/1000000.0f); // set integration time by time elapsed since last filter update
+  lastUpdate3 = Now3;
+  MadgwickQuaternionUpdate(-ax, ay, az, -gx*PI/180.0f, gy*PI/180.0f, gz*PI/180.0f, mx, my, -mz, deltat3);
+
+  yaw   = atan2(2.0f * (q[1] * q[2] + q[0] * q[3]), q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3]);   
+  pitch = -asin(2.0f * (q[1] * q[3] - q[0] * q[2]));
+  roll  = atan2(2.0f * (q[0] * q[1] + q[2] * q[3]), q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3]);
+  pitch *= 180.0f / PI;
+  yaw   *= 180.0f / PI; 
+  yaw   -= 13.8; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
+  roll  *= 180.0f / PI;
+  imu->yaw = yaw;
+  imu->pitch = pitch;
+  imu->roll = roll;
+  
+
+
+  packet += "3"; packet += ",";
+  packet += String(imu->yaw); packet += ",";
+  packet += String(imu->pitch); packet += ",";
+  packet += String(imu->roll);   
+ 
+
+    // put your main code here, to run repeatedly:
+  Serial.println(packet);
+  //BT.println(packet);
+  //delay(1);
   
   packet = "";
 }
