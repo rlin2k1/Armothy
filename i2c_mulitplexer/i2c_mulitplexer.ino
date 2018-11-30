@@ -108,18 +108,22 @@ void setup()
   radio.setPALevel(RF24_PA_MIN);
   radio.stopListening();
   
+  //////////////////////////////////////////
+  //SELECT DATA FROM IMU1   pin 7
+  /////////////////////////////////////////
   tcaselect(7); 
+  
   if(!imu1.begin())
-    Serial.println("failed to communicate with IMU2!");
- // Set data output ranges; choose lowest ranges for maximum resolution
+    Serial.println("failed to communicate with IMU1!");
+    
   imu1.setAccelScale(imu1.A_SCALE_2G);
   imu1.setGyroScale(imu1.G_SCALE_245DPS);
   imu1.setMagScale(imu1.M_SCALE_2GS);
 
   //////////////////////////////////////////
-  //SELECT DATA FROM IMU3
+  //SELECT DATA FROM IMU2   pin 6
   /////////////////////////////////////////
-  tcaselect(4);
+  tcaselect(6);
   
   if(!imu2.begin())
     Serial.println("failed to communicate with IMU2!");
@@ -130,17 +134,17 @@ void setup()
 
 
   /////////////////////////////////////////
-  //SELECT DATA FROM IMU3
+  //SELECT DATA FROM IMU3  pin 1
   ////////////////////////////////////////
-  tcaselect(2);
-  
-  if(!imu3.begin())
-    Serial.println("failed to communicate with IMU2!");
-    
-  imu3.setAccelScale(imu3.A_SCALE_2G);
-  imu3.setGyroScale(imu3.G_SCALE_245DPS);
-  imu3.setMagScale(imu3.M_SCALE_4GS);
-  
+//  tcaselect(1);
+//  
+//  if(!imu3.begin())
+//    Serial.println("failed to communicate with IMU2!");
+//    
+//  imu3.setAccelScale(imu3.A_SCALE_2G);
+//  imu3.setGyroScale(imu3.G_SCALE_245DPS);
+//  imu3.setMagScale(imu3.M_SCALE_4GS);
+//  
   packet = "";
 
 }
@@ -155,7 +159,9 @@ void loop()
   
   float angle = map(flexR, STRAIGHT_RESIST, ANGLE_RESIST,
                  0, 90.0);
-  
+  //////////////////////////////////////////////////////////
+  //////IMU1 DATA INPUT
+  //////////////////////////////////////////////////////////
   tcaselect(7);
   imu1.readGyro();           // Read raw gyro data
   gx = imu1.calcGyro(imu1.gx) - gbias[0];   // Convert to degrees per seconds, remove gyro biases
@@ -207,9 +213,9 @@ void loop()
 
 
   //////////////////////////////////////////////////////////
-  //////SECOND IMU DATA INPUT
+  //////IMU2 DATA INPUT
   //////////////////////////////////////////////////////////
-  tcaselect(4);
+  tcaselect(6);
   imu2.readGyro();           // Read raw gyro data
   gx = imu2.calcGyro(imu2.gx) - gbias[0];   // Convert to degrees per seconds, remove gyro biases
   gy = imu2.calcGyro(imu2.gy) - gbias[1];
@@ -260,7 +266,7 @@ void loop()
   //////////////////////////////////////////////////////////
   //////IMU3 DATA INPUT
   //////////////////////////////////////////////////////////
-  tcaselect(2);
+  tcaselect(1);
   imu3.readGyro();           // Read raw gyro data
   gx = imu3.calcGyro(imu3.gx) - gbias[0];   // Convert to degrees per seconds, remove gyro biases
   gy = imu3.calcGyro(imu3.gy) - gbias[1];
@@ -299,22 +305,13 @@ void loop()
   packet += String(imu->yaw); packet += ",";
   packet += String(imu->pitch); packet += ",";
   packet += String(imu->roll);  
-   
   packet.toCharArray(senddata, 32);
 
-
-    // put your main code here, to run repeatedly:
   Serial.println(packet);
-
-  
-  //const char test[] = "Testing";
   radio.write(senddata, sizeof(senddata)); 
   delay(1);
-  
   packet = "";
 
-  //radio.write(&text, sizeof(text));
-  //delay(1000);
 }
 
 void tcaselect(uint8_t i) {
