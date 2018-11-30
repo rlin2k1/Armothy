@@ -77,10 +77,6 @@ const float ANGLE_RESIST = 90000.0;
 
 float abias[3] = {0, 0, 0}, gbias[3] = {0, 0, 0};
 float ax, ay, az, gx, gy, gz, mx, my, mz; // variables to hold latest sensor data values 
-float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};    // vector to hold quaternion
-float eInt[3] = {0.0f, 0.0f, 0.0f};       // vector to hold integral error for Mahony method
-float temperature;
-
 
 struct imu_data {
   double yaw;
@@ -89,7 +85,9 @@ struct imu_data {
   float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};    // vector to hold quaternion
   float clawDeg;
 };
-imu_data* imu = new imu_data;
+imu_data* imu_d1 = new imu_data;
+imu_data* imu_d2 = new imu_data;
+imu_data* imu_d3 = new imu_data;
 
 void MadgwickQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz, float deltat);
 void tcaselect(uint8_t i);
@@ -182,35 +180,31 @@ void loop()
   my = imu1.calcMag(imu1.my);
   mz = imu1.calcMag(imu1.mz);
 
-  Serial.println("**********************1**********************");
-  Serial.print(gx);Serial.print(","); Serial.print(gy); Serial.print(","); Serial.println(gz);
-  Serial.print(ax);Serial.print(","); Serial.print(ay); Serial.print(","); Serial.println(az);
-  Serial.print(mx);Serial.print(","); Serial.print(my); Serial.print(","); Serial.println(mz);
   
   Now1 = micros();
   deltat1 = ((Now1 - lastUpdate1)/1000000.0f); // set integration time by time elapsed since last filter update
   lastUpdate1 = Now1;
-  MadgwickQuaternionUpdate(-ax, ay, az, -gx*PI/180.0f, gy*PI/180.0f, gz*PI/180.0f, mx, my, -mz, deltat1);
+  MadgwickQuaternionUpdate(-ax, ay, az, -gx*PI/180.0f, gy*PI/180.0f, gz*PI/180.0f, mx, my, -mz, deltat1, imu_d1);
   
-  yaw   = atan2(2.0f * (q[1] * q[2] + q[0] * q[3]), q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3]);   
-  pitch = -asin(2.0f * (q[1] * q[3] - q[0] * q[2]));
-  roll  = atan2(2.0f * (q[0] * q[1] + q[2] * q[3]), q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3]);
+  yaw   = atan2(2.0f * (imu_d1->q[1] * imu_d1->q[2] + imu_d1->q[0] * imu_d1->q[3]), imu_d1->q[0] * imu_d1->q[0] + imu_d1->q[1] * imu_d1->q[1] - imu_d1->q[2] * imu_d1->q[2] - imu_d1->q[3] * imu_d1->q[3]);   
+  pitch = -asin(2.0f * (imu_d1->q[1] * imu_d1->q[3] - imu_d1->q[0] * imu_d1->q[2]));
+  roll  = atan2(2.0f * (imu_d1->q[0] * imu_d1->q[1] + imu_d1->q[2] * imu_d1->q[3]), imu_d1->q[0] * imu_d1->q[0] - imu_d1->q[1] * imu_d1->q[1] - imu_d1->q[2] * imu_d1->q[2] + imu_d1->q[3] * imu_d1->q[3]);
   pitch *= 180.0f / PI;
   yaw   *= 180.0f / PI; 
   yaw   -= 13.8; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
   roll  *= 180.0f / PI;
-  imu->yaw = yaw;
-  imu->pitch = pitch;
-  imu->roll = roll;
+  imu_d1->yaw = yaw;
+  imu_d1->pitch = pitch;
+  imu_d1->roll = roll;
   
   
   
   packet += "1"; packet += ",";
  // packet += String(angle); packet += ",";
-  packet += String(imu->yaw); packet += ",";
-  packet += String(imu->pitch); packet += ",";
-  packet += String(imu->roll);   
- // Serial.println(packet);
+  packet += String(imu_d1->yaw); packet += ",";
+  packet += String(imu_d1->pitch); packet += ",";
+  packet += String(imu_d1->roll);   
+  Serial.println(packet);
   packet.toCharArray(senddata, 32);
 
   radio.write(senddata, sizeof(senddata));
@@ -239,36 +233,32 @@ void loop()
   my = imu2.calcMag(imu2.my);
   mz = imu2.calcMag(imu2.mz);
 
-  Serial.println("**********************2**********************");
-  Serial.print(gx);Serial.print(","); Serial.print(gy); Serial.print(","); Serial.println(gz);
-  Serial.print(ax);Serial.print(","); Serial.print(ay); Serial.print(","); Serial.println(az);
-  Serial.print(mx);Serial.print(","); Serial.print(my); Serial.print(","); Serial.println(mz);
   
   Now2 = micros();
   deltat2 = ((Now2 - lastUpdate2)/1000000.0f); // set integration time by time elapsed since last filter update
   lastUpdate2 = Now2;
-  MadgwickQuaternionUpdate(-ax, ay, az, -gx*PI/180.0f, gy*PI/180.0f, gz*PI/180.0f, mx, my, -mz, deltat2);
+  MadgwickQuaternionUpdate(-ax, ay, az, -gx*PI/180.0f, gy*PI/180.0f, gz*PI/180.0f, mx, my, -mz, deltat2, imu_d2);
 
-  yaw   = atan2(2.0f * (q[1] * q[2] + q[0] * q[3]), q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3]);   
-  pitch = -asin(2.0f * (q[1] * q[3] - q[0] * q[2]));
-  roll  = atan2(2.0f * (q[0] * q[1] + q[2] * q[3]), q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3]);
+  yaw   = atan2(2.0f * (imu_d2->q[1] * imu_d2->q[2] + imu_d2->q[0] * imu_d2->q[3]), imu_d2->q[0] * imu_d2->q[0] + imu_d2->q[1] * imu_d2->q[1] - imu_d2->q[2] * imu_d2->q[2] - imu_d2->q[3] * imu_d2->q[3]);   
+  pitch = -asin(2.0f * (imu_d2->q[1] * imu_d2->q[3] - imu_d2->q[0] * imu_d2->q[2]));
+  roll  = atan2(2.0f * (imu_d2->q[0] * imu_d2->q[1] + imu_d2->q[2] * imu_d2->q[3]), imu_d2->q[0] * imu_d2->q[0] - imu_d2->q[1] * imu_d2->q[1] - imu_d2->q[2] * imu_d2->q[2] + imu_d2->q[3] * imu_d2->q[3]);
   pitch *= 180.0f / PI;
   yaw   *= 180.0f / PI; 
   yaw   -= 13.8; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
   roll  *= 180.0f / PI;
-  imu->yaw = yaw;
-  imu->pitch = pitch;
-  imu->roll = roll;
+  imu_d2->yaw = yaw;
+  imu_d2->pitch = pitch;
+  imu_d2->roll = roll;
   
 
   packet += "2"; packet += ",";
-  packet += String(imu->yaw); packet += ",";
-  packet += String(imu->pitch); packet += ",";
-  packet += String(imu->roll);   
+  packet += String(imu_d2->yaw); packet += ",";
+  packet += String(imu_d2->pitch); packet += ",";
+  packet += String(imu_d2->roll);   
   packet.toCharArray(senddata, 32);
 
     // put your main code here, to run repeatedly:
-  //Serial.println(packet);
+  Serial.println(packet);
   radio.write(senddata, sizeof(senddata));
   delay(1);
   packet = ""; 
@@ -298,30 +288,26 @@ void loop()
   Now3 = micros();
   deltat3 = ((Now3 - lastUpdate3)/1000000.0f); // set integration time by time elapsed since last filter update
   lastUpdate3 = Now3;
-  MadgwickQuaternionUpdate(ax, ay, az, gx*PI/180.0f, gy*PI/180.0f, gz*PI/180.0f, mx, my, mz, deltat3);
+  MadgwickQuaternionUpdate(ax, ay, az, gx*PI/180.0f, gy*PI/180.0f, gz*PI/180.0f, mx, my, mz, deltat3, imu_d3);
 
-  yaw   = atan2(2.0f * (q[1] * q[2] + q[0] * q[3]), q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3]);   
-  pitch = -asin(2.0f * (q[1] * q[3] - q[0] * q[2]));
-  roll  = atan2(2.0f * (q[0] * q[1] + q[2] * q[3]), q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3]);
+  yaw   = atan2(2.0f * (imu_d3->q[1] * imu_d3->q[2] + imu_d3->q[0] * imu_d3->q[3]), imu_d3->q[0] * imu_d3->q[0] + imu_d3->q[1] * imu_d3->q[1] - imu_d3->q[2] * imu_d3->q[2] - imu_d3->q[3] * imu_d3->q[3]);   
+  pitch = -asin(2.0f * (imu_d3->q[1] * imu_d3->q[3] - imu_d3->q[0] * imu_d3->q[2]));
+  roll  = atan2(2.0f * (imu_d3->q[0] * imu_d3->q[1] + imu_d3->q[2] * imu_d3->q[3]), imu_d3->q[0] * imu_d3->q[0] - imu_d3->q[1] * imu_d3->q[1] - imu_d3->q[2] * imu_d3->q[2] + imu_d3->q[3] * imu_d3->q[3]);
   pitch *= 180.0f / PI;
   yaw   *= 180.0f / PI; 
   yaw   -= 13.8; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
   roll  *= 180.0f / PI;
-  imu->yaw = yaw;
-  imu->pitch = pitch;
-  imu->roll = roll;
-  
-Serial.println("**********************3**********************");
-  Serial.print(gx);Serial.print(","); Serial.print(gy); Serial.print(","); Serial.println(gz);
-  Serial.print(ax);Serial.print(","); Serial.print(ay); Serial.print(","); Serial.println(az);
-  Serial.print(mx);Serial.print(","); Serial.print(my); Serial.print(","); Serial.println(mz);
+  imu_d3->yaw = yaw;
+  imu_d3->pitch = pitch;
+  imu_d3->roll = roll;
+
   packet += "3"; packet += ",";
-  packet += String(imu->yaw); packet += ",";
-  packet += String(imu->pitch); packet += ",";
-  packet += String(imu->roll);  
+  packet += String(imu_d3->yaw); packet += ",";
+  packet += String(imu_d3->pitch); packet += ",";
+  packet += String(imu_d3->roll);  
   packet.toCharArray(senddata, 32);
 
-  //Serial.println(packet);
+  Serial.println(packet);
   radio.write(senddata, sizeof(senddata)); 
   delay(1);
   packet = "";
@@ -344,9 +330,9 @@ void tcaselect(uint8_t i) {
 // The performance of the orientation filter is at least as good as conventional Kalman-based filtering algorithms
 // but is much less computationally intensive---it can be performed on a 3.3 V Pro Mini operating at 8 MHz!
   
-        void MadgwickQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz, float deltat)
+        void MadgwickQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz, float deltat, imu_data* imu)
         {
-            float q1 = q[0], q2 = q[1], q3 = q[2], q4 = q[3];   // short name local variable for readability
+            float q1 = imu->q[0], q2 = imu->q[1], q3 = imu->q[2], q4 = imu->q[3];   // short name local variable for readability
             float norm;
             float hx, hy, _2bx, _2bz;
             float s1, s2, s3, s4;
@@ -429,9 +415,9 @@ void tcaselect(uint8_t i) {
             q4 += qDot4 * deltat;
             norm = sqrt(q1 * q1 + q2 * q2 + q3 * q3 + q4 * q4);    // normalise quaternion
             norm = 1.0f/norm;
-            q[0] = q1 * norm;
-            q[1] = q2 * norm;
-            q[2] = q3 * norm;
-            q[3] = q4 * norm;
+            imu->q[0] = q1 * norm;
+            imu->q[1] = q2 * norm;
+            imu->q[2] = q3 * norm;
+            imu->q[3] = q4 * norm;
 
         }
