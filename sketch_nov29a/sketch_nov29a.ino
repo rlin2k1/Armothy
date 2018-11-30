@@ -20,7 +20,7 @@ extern "C" {
 
 #define TCAADDR 0x70
 
-RF24 radio(7, 8); //CE, CSN
+RF24 radio(9, 8); //CE, CSN
 
 // [SPI or I2C Mode declaration],[gyro I2C address],[xm I2C add.]
 LSM9DS0 imu3(MODE_I2C, LSM9DS0_G, LSM9DS0_XM);
