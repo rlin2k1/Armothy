@@ -9,7 +9,7 @@
 #include <SoftwareSerial.h>
 RF24 radio(9, 8); // CE, CSN
 
-//initialization for servos
+          //initialization for servos
 Servo base;
 Servo shoulder;
 Servo elbow;
@@ -23,21 +23,15 @@ const int SHOULDER = 3;
 const int ELBOW = 4;
 const int CUFF = 5;
 const int WRIST = 6;
-//const int GRIPPER = 7;
-const int def_angle = 90;
-const int B_CAM = 90;
-const int S_CAM = 90;
-const int E_CAM = 90;
-const int C_CAM = 90;
-const int W_CAM = 90;
+const int GRIPPER = 7;
 
 int x = 0;
 //initialization for angles on arm
-int b_angle = 1500;
-int s_angle = 1500;
-int e_angle = 1500;
-int c_angle = 1500;
-int w_angle = 1500;
+int b_angle = 90;
+int s_angle = 180;
+int e_angle = 90;
+int c_angle = 90;
+int w_angle = 90;
 int g_angle = 90;
 
 struct imu_data {
@@ -53,40 +47,59 @@ imu_data* imu3 = new imu_data;
 String readString;
 
 
-void update_movement(imu_data* imu) 
+void update_movement(imu_data* imu)
 {
-    //Serial.println(imu->clawDeg);
-    if(imu == imu1)
+  if (imu == imu1)
+  {
+    w_angle = 90-imu->roll;
+    if(w_angle >= 180)
     {
-      //Serial.println(imu->clawDeg);
-      gripper.write(180 - imu->clawDeg);
-      
+      w_angle = 180;
+    }
+    else if(w_angle <= 0)
+    {
+      w_angle = 0;
+    }
+    wrist.write(w_angle);
 
-      //execute movement of arm
-      if((imu->roll <= 180) && (imu->pitch <= 180))
-      {
-        //JASON SHOULD KNOW WHAT SERVOS CORRESPOND TO WHAT PINS
-        //ERICK SHOULD KNOW WHAT SERVOS DO WHAT
 
-        wrist.write( imu->roll);
-        cuff.write(180 - imu->pitch);
-        //Serial.print(imu->roll); Serial.print("\t"); Serial.println(imu->pitch); 
-      }
-    }
-    else if(imu == imu2)
+    c_angle = 90-imu->pitch;
+    if(c_angle >= 180)
     {
-      if(imu->yaw <= 180) {
-        elbow.write(imu->yaw);
-      }
+      c_angle = 180;
     }
-    else if(imu == imu3)
+    else if(c_angle <= 0)
     {
-      if((imu->roll <= 180) && (imu->pitch <= 180))
-      {
-        base.write(imu->roll);
-        shoulder.write(180 - imu->pitch);
-      }
+      c_angle = 0;
     }
+    cuff.write(c_angle);
+
+    Serial.print("wrist: ");
+    Serial.println(w_angle);
+    Serial.print("cuff: ");
+    Serial.println(c_angle);
+    //execute movement of arm
+//    if ((imu->roll <= 180) && (imu->pitch <= 180))
+//    {
+//      wrist.write(imu->pitch);
+//      cuff.write(180 - imu->roll);
+//    }
+  }
+  else if (imu == imu2)
+  {
+//    if (imu->yaw <= 180) {
+//      elbow.write(imu->pitch);
+//    }
+  }
+  else if (imu == imu3)
+  {
+//    if ((imu->roll <= 180) && (imu->pitch <= 180))
+//    {
+//      base.write(imu->roll);
+//      shoulder.write(180 - imu->pitch);
+//    }
+  }
+  //Serial.println("wrist angle: "+w_angle);
 }
 
 void setup()
@@ -95,48 +108,51 @@ void setup()
   radio.begin();
   radio.openReadingPipe(0, address);
   radio.setPALevel(RF24_PA_MIN);
-  radio.startListening();  //Setup for servos and initialization
+  radio.startListening();  
+
+
+  //Setup for servos and initialization
   base.attach(BASE);
-  base.write(def_angle);
+  base.write(b_angle);
   shoulder.attach(SHOULDER);
-  shoulder.write(S_CAM);
+  shoulder.write(s_angle);
   elbow.attach(ELBOW);
-  elbow.write(E_CAM);
+  elbow.write(e_angle);
   cuff.attach(CUFF);
-  cuff.write(C_CAM);
+  cuff.write(c_angle);
   wrist.attach(WRIST);
-  wrist.write(W_CAM);
-  //gripper.attach(GRIPPER);
-  //gripper.write(90);
+  wrist.write(w_angle);
+  gripper.attach(GRIPPER);
+  gripper.write(g_angle);
 
 }
 
 void loop()
 {
   imu_data* imu = nullptr;
-  if(radio.available())
-  {     
+  if (radio.available())
+  {
     char text[32] = "";
     radio.read(&text, sizeof(text));
-    Serial.println(text);
+    //Serial.println(text);
 
     int whichimu;
     char *data;
     data = strtok(text, ",");
     whichimu = atoi(data);
-    switch(whichimu)
+    switch (whichimu)
     {
-      case 0:
-        imu = imu1;
-        break;
-      case 1:
-        imu = imu2;
-        break;
-      case 2:
-        imu = imu3;
-        break;
+    case 1:
+      imu = imu1;
+      break;
+    case 2:
+      imu = imu2;
+      break;
+    case 3:
+      imu = imu3;
+      break;
     }
-    if(whichimu == 0)
+    if (whichimu == 1)
     {
       data = strtok(0, ",");
       imu->clawDeg = atof(data);
@@ -148,50 +164,6 @@ void loop()
     data = strtok(0, ",");
     imu->roll = atof(data);
     update_movement(imu);
-    
-    /*char c = BT.read();  //gets one byte from serial buffer
-    if (c == '\n') 
-    {
-      if (readString.length() >1) 
-      {
-        readString += c;
-        //Serial.print(readString);
-        char* cdata = readString.c_str();
-        char* data = strtok(cdata, ",");
-        int whichimu = *data - 97;
-        switch(whichimu)
-        {
-          case 0:
-            imu = imu1;
-            break;
-          case 1:
-            imu = imu2;
-            break;
-          case 2:
-            imu = imu3;
-            break;
-          default:
-            readString = "";
-            break;
-        }
-        if(whichimu == 0)
-        {
-          data = strtok(0, ",");
-          imu->clawDeg = atof(data);
-        }
-        data = strtok(0, ",");
-        imu->yaw = atof(data);
-        data = strtok(0, ",");
-        imu->pitch = atof(data);
-        data = strtok(0, ",");
-        imu->roll = atof(data);
-        readString="";
-        update_movement(imu);
-      }*/
-    }  
-     /*else 
-     {     
-      readString += c; //makes the string readString
-     }  */
+  }
 }
-//}
+

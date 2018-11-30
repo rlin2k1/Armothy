@@ -200,7 +200,7 @@ void loop()
   
   
   packet += "1"; packet += ",";
- // packet += String(angle); packet += ",";
+  packet += String(angle); packet += ",";
   packet += String(imu_d1->yaw); packet += ",";
   packet += String(imu_d1->pitch); packet += ",";
   packet += String(imu_d1->roll);   
@@ -209,7 +209,7 @@ void loop()
 
   radio.write(senddata, sizeof(senddata));
 
-  delay(1);
+  delay(20);
   packet = ""; 
 
 
@@ -258,9 +258,9 @@ void loop()
   packet.toCharArray(senddata, 32);
 
     // put your main code here, to run repeatedly:
-  Serial.println(packet);
+  //Serial.println(packet);
   radio.write(senddata, sizeof(senddata));
-  delay(1);
+  delay(20);
   packet = ""; 
   
 
@@ -307,9 +307,9 @@ void loop()
   packet += String(imu_d3->roll);  
   packet.toCharArray(senddata, 32);
 
-  Serial.println(packet);
+  //Serial.println(packet);
   radio.write(senddata, sizeof(senddata)); 
-  delay(1);
+  delay(20);
   packet = "";
   
 
