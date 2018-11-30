@@ -1,7 +1,13 @@
+#include <nRF24L01.h>
+#include <printf.h>
+#include <RF24.h>
+#include <RF24_config.h>
+
 #include <SPI.h> // Included for SFE_LSM9DS0 library
 #include <Wire.h>
 #include <Servo.h>
 #include <SoftwareSerial.h>
+RF24 radio(9, 8); // CE, CSN
 
 //initialization for servos
 Servo base;
@@ -10,15 +16,14 @@ Servo elbow;
 Servo cuff;
 Servo wrist;
 Servo gripper;
-
-SoftwareSerial BT(10, 11);
+const byte address[6] = "00001";
 
 const int BASE = 2;
 const int SHOULDER = 3;
 const int ELBOW = 4;
 const int CUFF = 5;
 const int WRIST = 6;
-const int GRIPPER = 7;
+//const int GRIPPER = 7;
 const int def_angle = 90;
 const int B_CAM = 90;
 const int S_CAM = 90;
@@ -65,28 +70,32 @@ void update_movement(imu_data* imu)
 
         wrist.write( imu->roll);
         cuff.write(180 - imu->pitch);
-        Serial.print(imu->roll); Serial.print("\t"); Serial.println(imu->pitch); 
+        //Serial.print(imu->roll); Serial.print("\t"); Serial.println(imu->pitch); 
       }
     }
     else if(imu == imu2)
     {
-      //if((imu->roll <= 180) && (imu->pitch <= 180))
-      //{
-       // base.write(imu->pitch);
-       // shoulder.write(180 - imu->roll);
-      //}
+      if(imu->yaw <= 180) {
+        elbow.write(imu->yaw);
+      }
     }
     else if(imu == imu3)
     {
-      
+      if((imu->roll <= 180) && (imu->pitch <= 180))
+      {
+        base.write(imu->roll);
+        shoulder.write(180 - imu->pitch);
+      }
     }
 }
 
 void setup()
 {
   Serial.begin(9600); // Start serial at 38400 bps
-  BT.begin(38400);
-  //Setup for servos and initialization
+  radio.begin();
+  radio.openReadingPipe(0, address);
+  radio.setPALevel(RF24_PA_MIN);
+  radio.startListening();  //Setup for servos and initialization
   base.attach(BASE);
   base.write(def_angle);
   shoulder.attach(SHOULDER);
@@ -97,17 +106,50 @@ void setup()
   cuff.write(C_CAM);
   wrist.attach(WRIST);
   wrist.write(W_CAM);
-  gripper.attach(GRIPPER);
-  gripper.write(90);
+  //gripper.attach(GRIPPER);
+  //gripper.write(90);
 
 }
 
 void loop()
 {
   imu_data* imu = nullptr;
-  if(BT.available())
-  { 
-    char c = BT.read();  //gets one byte from serial buffer
+  if(radio.available())
+  {     
+    char text[32] = "";
+    radio.read(&text, sizeof(text));
+    Serial.println(text);
+
+    int whichimu;
+    char *data;
+    data = strtok(text, ",");
+    whichimu = atoi(data);
+    switch(whichimu)
+    {
+      case 0:
+        imu = imu1;
+        break;
+      case 1:
+        imu = imu2;
+        break;
+      case 2:
+        imu = imu3;
+        break;
+    }
+    if(whichimu == 0)
+    {
+      data = strtok(0, ",");
+      imu->clawDeg = atof(data);
+    }
+    data = strtok(0, ",");
+    imu->yaw = atof(data);
+    data = strtok(0, ",");
+    imu->pitch = atof(data);
+    data = strtok(0, ",");
+    imu->roll = atof(data);
+    update_movement(imu);
+    
+    /*char c = BT.read();  //gets one byte from serial buffer
     if (c == '\n') 
     {
       if (readString.length() >1) 
@@ -145,11 +187,11 @@ void loop()
         imu->roll = atof(data);
         readString="";
         update_movement(imu);
-      }
+      }*/
     }  
-     else 
+     /*else 
      {     
       readString += c; //makes the string readString
-     }  
-  }
+     }  */
 }
+//}

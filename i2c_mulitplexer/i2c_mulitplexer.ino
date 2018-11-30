@@ -4,6 +4,8 @@
 #include <SoftwareSerial.h>
 #include "SparkFunLSM9DS1.h"
 #include "SFE_LSM9DS0.h"
+#include <nRF24L01.h>
+#include <RF24.h>
 
 //#include "Arduino.h"
 extern "C" { 
@@ -18,7 +20,7 @@ extern "C" {
 
 #define TCAADDR 0x70
 
-SoftwareSerial BT(10,11); // CE, CSN
+RF24 radio(7, 8); //CE, CSN
 
 // [SPI or I2C Mode declaration],[gyro I2C address],[xm I2C add.]
 LSM9DS0 imu1(MODE_I2C, LSM9DS0_G, LSM9DS0_XM);
@@ -101,8 +103,10 @@ void setup()
 {
   Wire.begin();
   Serial.begin(38400); // Start serial at 38400 bps
-  BT.begin(38400);
-
+  radio.begin();
+  radio.openWritingPipe(address);
+  radio.setPALevel(RF24_PA_MIN);
+  radio.stopListening();
   
   tcaselect(7); 
   if(!imu1.begin())
@@ -143,6 +147,8 @@ void setup()
 
 void loop()
 {
+  //const char text[] = "Hello World";
+  
   int flexADC = analogRead(FLEX_PIN);
   float flexV = flexADC * VCC / 1023.0;
   float flexR = R_DIV * (VCC / flexV - 1.0);
@@ -190,10 +196,13 @@ void loop()
   packet += String(imu->yaw); packet += ",";
   packet += String(imu->pitch); packet += ",";
   packet += String(imu->roll);   
-  
   Serial.println(packet);
-  //BT.println(packet);
-  //delay(1);
+  char senddata[32];
+  packet.toCharArray(senddata, 32);
+
+  radio.write(senddata, sizeof(senddata));
+
+  delay(1);
   packet = ""; 
 
 
@@ -239,12 +248,12 @@ void loop()
   packet += String(imu->yaw); packet += ",";
   packet += String(imu->pitch); packet += ",";
   packet += String(imu->roll);   
- 
+  packet.toCharArray(senddata, 32);
 
     // put your main code here, to run repeatedly:
   Serial.println(packet);
-  //BT.println(packet);
-  //delay(1);
+  radio.write(senddata, sizeof(senddata));
+  delay(1);
   packet = ""; 
 
 
@@ -289,15 +298,23 @@ void loop()
   packet += "3"; packet += ",";
   packet += String(imu->yaw); packet += ",";
   packet += String(imu->pitch); packet += ",";
-  packet += String(imu->roll);   
- 
+  packet += String(imu->roll);  
+   
+  packet.toCharArray(senddata, 32);
+
 
     // put your main code here, to run repeatedly:
   Serial.println(packet);
-  //BT.println(packet);
-  //delay(1);
+
+  
+  //const char test[] = "Testing";
+  radio.write(senddata, sizeof(senddata)); 
+  delay(1);
   
   packet = "";
+
+  //radio.write(&text, sizeof(text));
+  //delay(1000);
 }
 
 void tcaselect(uint8_t i) {
